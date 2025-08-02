@@ -1,0 +1,242 @@
+---
+# Source: generic/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-config
+  namespace: default
+data:
+  APP_ENV: "production"
+  LOG_LEVEL: "info"
+---
+# Source: generic/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: test
+  namespace: default
+  labels:
+    helm.sh/chart: rise-generic
+    app.kubernetes.io/name: test
+    app.kubernetes.io/instance: rise
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: my-service.example.com
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: 8080
+    - name: https
+      port: 443
+      protocol: TCP
+      targetPort: 8443
+  selector:
+    app.kubernetes.io/name: test
+    app.kubernetes.io/instance: rise
+---
+# Source: generic/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test
+  namespace: default
+  labels:
+    helm.sh/chart: rise-generic
+    app.kubernetes.io/name: test
+    app.kubernetes.io/instance: rise
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm 
+spec: 
+  replicas: 2
+  selector: 
+    matchLabels:
+      app.kubernetes.io/name: test
+      app.kubernetes.io/instance: rise
+  template:
+    metadata:
+    helm.sh/chart: rise-generic
+    app.kubernetes.io/name: test
+    app.kubernetes.io/instance: rise
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm 
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                  - my-app
+              topologyKey:  kubernetes.io/hostname
+            weight: 100
+
+        containers:
+          - name: test
+            image: my-docker-repo/my-app:latest
+            imagePullPolicy: IfNotPresent
+            workingDir: /app
+---
+# Source: generic/templates/hpa.yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: test-hpa
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: my-app
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+    - type: Pods
+      pods:
+        metric:
+          name: requests_per_second
+        target:
+          type: AverageValue
+          averageValue: 50
+---
+# Source: generic/templates/statefulsets.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: test
+  namespace: default
+  labels:
+    helm.sh/chart: rise-generic
+    app.kubernetes.io/name: test
+    app.kubernetes.io/instance: rise
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: test
+      app.kubernetes.io/instance: rise
+  template:
+    metadata:
+      labels:
+        helm.sh/chart: rise-generic
+        app.kubernetes.io/name: test
+        app.kubernetes.io/instance: rise
+        app.kubernetes.io/version: "1.16.0"
+        app.kubernetes.io/managed-by: Helm
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app.kubernetes.io/name
+                      operator: In
+                      values:
+                        - my-app
+                topologyKey: kubernetes.io/hostname
+              weight: 100
+
+      containers:
+        - name: test
+          image: my-docker-repo/my-app:latest
+          imagePullPolicy: IfNotPresent
+          workingDir: /app
+          ports:
+            - containerPort: 
+              name: test
+          envFrom:
+            - configMapRef:
+                name: test-config
+            - secretRef:
+                name: test-secret
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 
+            failureThreshold: 3
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 
+            failureThreshold: 3
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 250m
+              memory: 256Mi
+          volumeMounts:
+            - mountPath: /data
+              name: data
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: 
+      - ReadWriteOnce
+      storageClassName: fast-storage
+      resources:
+        requests:
+        storage: 10Gi
+  - metadata:
+      name: logs
+    spec:
+      accessModes: 
+      - ReadWriteOnce
+      resources:
+        requests:
+        storage: 20Gi
+---
+# Source: generic/templates/secret.yaml
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: test-secret
+  namespace: default
+spec:
+  refreshInterval: 1m
+  secretStoreRef:
+    name: my-cluster-secret-store
+    kind: ClusterSecretStore
+  target:
+    name: test-secret
+  data:
+  - secretKey: DB_PASSWORD
+    remoteRef:
+      key: my-secret-key
+      version: latest
+      property: password
+  - secretKey: API_KEY
+    remoteRef:
+      key: my-secret-key
+      version: latest
+      property: apiKey

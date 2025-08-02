@@ -1,0 +1,53 @@
+{{- if .Values.hpa.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "app.name" . }}-hpa
+  namespace: {{ .Values.namespace | default "default" }}
+spec:
+  scaleTargetRef:
+    apiVersion: {{ .Values.hpa.scaleTargetRef.apiVersion | default "apps/v1" }}
+    kind: {{ .Values.hpa.scaleTargetRef.kind | default "Deployment" }}
+    name: {{ .Values.hpa.scaleTargetRef.name | default (include "app.name" .) }}
+  minReplicas: {{ .Values.hpa.minReplicas | default 1 }}
+  maxReplicas: {{ .Values.hpa.maxReplicas | default 10 }}
+  metrics:
+  {{- range .Values.hpa.metrics }}
+    - type: {{ .type }}
+      {{- if eq .type "Resource" }}
+      resource:
+        name: {{ .resource.name }}
+        target:
+          type: {{ .resource.target.type }}
+          {{- if .resource.target.averageUtilization }}
+          averageUtilization: {{ .resource.target.averageUtilization }}
+          {{- end }}
+          {{- if .resource.target.value }}
+          value: {{ .resource.target.value }}
+          {{- end }}
+          {{- if .resource.target.averageValue }}
+          averageValue: {{ .resource.target.averageValue }}
+          {{- end }}
+      {{- end }}
+      {{- if eq .type "Pods" }}
+      pods:
+        metric:
+          name: {{ .pods.metric.name }}
+        target:
+          type: {{ .pods.target.type }}
+          averageValue: {{ .pods.target.averageValue }}
+      {{- end }}
+      {{- if eq .type "Object" }}
+      object:
+        describedObject:
+          apiVersion: {{ .object.describedObject.apiVersion }}
+          kind: {{ .object.describedObject.kind }}
+          name: {{ .object.describedObject.name }}
+        metric:
+          name: {{ .object.metric.name }}
+        target:
+          type: {{ .object.target.type }}
+          value: {{ .object.target.value }}
+      {{- end }}
+  {{- end }}
+{{- end }}
