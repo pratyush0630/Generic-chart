@@ -1,0 +1,128 @@
+{{- if  .Values.statefulset }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "app.name" $ }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    {{- include "app.labels" $ | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "app.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "app.labels" . | nindent 8 }}
+    spec:
+      {{- if .Values.affinity }}
+      affinity:
+        {{- if .Values.affinity.podAntiAffinity }}
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app.kubernetes.io/name
+                      operator: In
+                      values:
+                        - {{ .Values.affinity.podAntiAffinity.keyValue }}
+                topologyKey: {{ .Values.affinity.podAntiAffinity.topologyKey }}
+              weight: {{ .Values.affinity.podAntiAffinity.weight }}
+        {{- end }}
+        {{- if .Values.affinity.key }}
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: {{ .Values.affinity.key }}
+                    operator: In
+                    values:
+                      - {{ .Values.affinity.value }}
+        {{- end }}
+      {{- end }}
+
+      {{- if .Values.affinity.key }}
+      tolerations:
+        - effect: NoSchedule
+          key: {{ .Values.affinity.key }}
+          operator: Equal
+          value: {{ .Values.affinity.key }}
+      {{- end }}
+
+      containers:
+        - name: {{ include "app.name" . }}
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          imagePullPolicy: {{ default "IfNotPresent" .Values.image.pullPolicy }}
+          {{- if .Values.workDir }}
+          workingDir: {{ .Values.workDir }}
+          {{- end }}
+          {{- if .Values.command }}
+          command:
+            {{- range .Values.command }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- end }}
+          {{- if .Values.securityContext }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- end }}
+          {{- if .Values.args }}
+          args:
+            {{- range .Values.args }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- end }}
+          ports:
+            - containerPort: {{ .Values.service.containerPort }}
+              name: {{ include "app.name" . | trunc 15 }}
+          envFrom:
+            {{- if .Values.configs }}
+            - configMapRef:
+                name: {{ include "app.name" . }}-config
+            {{- end }}
+            {{- if .Values.secrets }}
+            - secretRef:
+                name: {{ include "app.name" . }}-secret
+            {{- end }}
+          {{- if .Values.probes }}
+          livenessProbe:
+            httpGet:
+              path: {{ default "/healthz" .Values.probes.livenessPath }}
+              port: {{ .Values.service.containerPort }}
+            {{- toYaml .Values.probes.liveness | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: {{ default "/readyz" .Values.probes.readinessPath }}
+              port: {{ .Values.service.containerPort }}
+            {{- toYaml .Values.probes.readiness | nindent 12 }}
+          {{- end }}
+          {{- if .Values.resources }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- end }}
+          {{- if .Values.volumes }}
+          volumeMounts:
+            - mountPath: {{ .Values.volumes.path }}
+              name: data
+          {{- end }}
+
+  
+  {{- if .Values.statefulset.volumeClaimTemplates }}
+  volumeClaimTemplates:
+    {{- range .Values.statefulset.volumeClaimTemplates }}
+  - metadata:
+      name: {{ .name }}
+    spec:
+      accessModes: {{ toYaml .accessModes | nindent 6 }}
+      {{- if .storageClassName }}
+      storageClassName: {{ .storageClassName }}
+      {{- end }}
+      resources:
+        requests:
+        storage: {{ .resources.requests.storage }}
+  {{- end }}
+{{- end }}
+{{- end }}
+

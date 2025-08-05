@@ -1,0 +1,138 @@
+namespace: default
+nameOverride: "test"
+
+#Deployment 
+replicas: 2
+
+image:
+  repository: my-docker-repo/my-app
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+workDir: /app
+
+command: []
+args: []
+
+
+affinity:
+  podAntiAffinity:
+    keyValue: my-app
+    topologyKey: kubernetes.io/hostname
+    weight: 100
+  key: ""
+  value: ""
+
+
+configs:
+  APP_ENV: "production"
+  LOG_LEVEL: "info"
+
+
+secrets:
+  secretStore: my-cluster-secret-store
+  key: my-secret-key
+  data:
+    - name: DB_PASSWORD
+      property: password
+    - name: API_KEY
+      property: apiKey
+
+
+service:
+  type: ClusterIP
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+    external-dns.alpha.kubernetes.io/hostname: my-service.example.com
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+    - name: https
+      port: 443
+      targetPort: 8443
+
+
+probes:
+  livelinessPath: /healthz
+  liveness:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+  readinessPath: /readyz
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+
+volumes:
+  path: /data
+
+#StatefulSets
+statefulset:
+  replicaCount: 2
+  volumes:
+    storageClassName: standard
+    storage: 5Gi
+    statefulset:
+  volumeClaimTemplates:
+    - name: data
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: fast-storage
+      resources:
+        requests:
+          storage: 10Gi
+    - name: logs
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 20Gi
+
+hpa:
+  enabled: true
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: my-app
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    # CPU Utilization
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75
+    # Memory Utilization
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+    # Pods custom metric
+    - type: Pods
+      pods:
+        metric:
+          name: requests_per_second
+        target:
+          type: AverageValue
+          averageValue: 50
+
+
+selectorLabels: {}
+extraVolumes: []
+securityContext: {}
