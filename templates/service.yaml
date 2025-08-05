@@ -1,4 +1,4 @@
-{{- if and .Values.service (not .Values.rollout) }}
+{{- if and .Values.service }}
 apiVersion: v1
 kind: Service
 metadata:
